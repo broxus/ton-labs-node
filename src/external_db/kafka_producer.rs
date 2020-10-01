@@ -15,16 +15,17 @@ impl KafkaProducer {
             Ok(Self { config, producer: None } )
         } else {
             log::trace!("Creating kafka producer (topic: {})...", config.topic);
-            let config_prototype = rdkafka::config::ClientConfig::new()
+            let mut config_prototype = rdkafka::config::ClientConfig::new();
+            config_prototype
                 .set("bootstrap.servers", &config.brokers)
                 .set("message.timeout.ms", &config.message_timeout_ms.to_string())
                 .set("message.max.bytes", &config.message_max_size.to_string());
             let producer =
                 match &config.security_config {
                     Some(sec) => (
-                        match sec {
+                        match &sec {
                             &SecurityConfig::Sasl(sasl) => {
-                                config
+                                config_prototype
                                     .set("security.protocol", &sasl.security_protocol)
                                     .set("ssl.ca.location", &sasl.ssl_ca_location)
                                     .set("sasl.mechanism", &sasl.sasl_mechanism)
@@ -34,7 +35,7 @@ impl KafkaProducer {
                             }
                         }
                     ),
-                    None => (config.create()?)
+                    None => (config_prototype.create()?)
                 };
 
             Ok(Self { config, producer: Some(producer) } )

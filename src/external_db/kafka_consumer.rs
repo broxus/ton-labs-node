@@ -35,8 +35,8 @@ impl KafkaConsumer {
     pub async fn run_attempt(&self) -> Result<()> {
         log::trace!("Creating consumer...");
 
-        let config = rdkafka::config::ClientConfig::new()
-            .set("group.id", &self.config.group_id)
+        let mut  config = rdkafka::config::ClientConfig::new();
+            config.set("group.id", &self.config.group_id)
             .set("bootstrap.servers", &self.config.brokers)
             .set("enable.partition.eof", "false")
             .set("session.timeout.ms", &self.config.session_timeout_ms.to_string())
@@ -45,7 +45,7 @@ impl KafkaConsumer {
         let consumer: rdkafka::consumer::stream_consumer::StreamConsumer =
             match &self.config.security_config {
                 Some(sec) => (
-                    match sec {
+                    match &sec {
                         &SecurityConfig::Sasl(sasl) => {
                             config
                                 .set("security.protocol", &sasl.security_protocol)
