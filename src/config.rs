@@ -43,6 +43,7 @@ pub struct KafkaConsumerConfig {
     pub topic: String,
     pub session_timeout_ms: u32,
     pub run_attempt_timeout_ms: u32,
+    #[serde(default)]
     pub security_config: Option<SecurityConfig>
 
 }
