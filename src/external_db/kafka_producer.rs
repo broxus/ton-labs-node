@@ -1,6 +1,7 @@
 use std::time;
 use crate::{external_db::WriteData, config::KafkaProducerConfig};
 use ton_types::{Result, fail};
+use crate::config::SecurityConfig;
 
 pub(super) struct KafkaProducer {
     config: KafkaProducerConfig,
@@ -14,11 +15,27 @@ impl KafkaProducer {
             Ok(Self { config, producer: None } )
         } else {
             log::trace!("Creating kafka producer (topic: {})...", config.topic);
-            let producer = rdkafka::config::ClientConfig::new()
+            let config_prototype = rdkafka::config::ClientConfig::new()
                 .set("bootstrap.servers", &config.brokers)
                 .set("message.timeout.ms", &config.message_timeout_ms.to_string())
-                .set("message.max.bytes", &config.message_max_size.to_string())
-                .create()?;
+                .set("message.max.bytes", &config.message_max_size.to_string());
+            let producer =
+                match &config.security_config {
+                    Some(sec) => (
+                        match sec {
+                            &SecurityConfig::Sasl(sasl) => {
+                                config
+                                    .set("security.protocol", &sasl.security_protocol)
+                                    .set("ssl.ca.location", &sasl.ssl_ca_location)
+                                    .set("sasl.mechanism", &sasl.sasl_mechanism)
+                                    .set("sasl.username", &sasl.sasl_username)
+                                    .set("sasl.password", &sasl.sasl_password)
+                                    .create()?
+                            }
+                        }
+                    ),
+                    None => (config.create()?)
+                };
 
             Ok(Self { config, producer: Some(producer) } )
         }

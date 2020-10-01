@@ -5,9 +5,9 @@ use adnl::{adnl_node_test_config, adnl_node_test_key,
 use hex::FromHex;
 use std::{io::BufReader, fs::File, net::{Ipv4Addr, IpAddr, SocketAddr}, path::Path};
 use ton_api::{
-    IntoBoxed, 
+    IntoBoxed,
     ton::{
-        self, adnl::{address::address::Udp, addresslist::AddressList as AdnlAddressList}, 
+        self, adnl::{address::address::Udp, addresslist::AddressList as AdnlAddressList},
         dht::node::Node as DhtNodeConfig, pub_::publickey::Ed25519
     }
 };
@@ -42,9 +42,24 @@ pub struct KafkaConsumerConfig {
     pub brokers: String,
     pub topic: String,
     pub session_timeout_ms: u32,
-    pub run_attempt_timeout_ms: u32
+    pub run_attempt_timeout_ms: u32,
+    pub security_config: Option<SecurityConfig>
+
 }
 
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
+pub enum SecurityConfig{
+    Sasl(Sasl)
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Default, Debug, Clone)]
+pub struct Sasl {
+pub security_protocol: String,
+    pub ssl_ca_location: String,
+    pub sasl_mechanism: String,
+    pub sasl_username: String,
+    pub sasl_password: String
+}
 
 #[derive(Debug, Default, serde::Deserialize, serde::Serialize, Clone)]
 pub struct KafkaProducerConfig {
@@ -55,6 +70,7 @@ pub struct KafkaProducerConfig {
     pub attempt_timeout_ms: u32,
     pub message_max_size: usize,
     pub big_messages_storage: String,
+    pub security_config: Option<SecurityConfig>
 }
 
 #[derive(Debug, Default, serde::Deserialize, serde::Serialize, Clone)]
@@ -71,7 +87,7 @@ pub struct ExternalDbConfig {
 
 impl TonNodeConfig {
 
-    pub fn from_file(configs_dir: &str, json_file_name: &str, default_config_name: &str) -> Result<Self> { 
+    pub fn from_file(configs_dir: &str, json_file_name: &str, default_config_name: &str) -> Result<Self> {
         let config_file_path = TonNodeConfig::build_path(configs_dir, json_file_name)?;
         let config_file = File::open(config_file_path.clone());
 
@@ -124,7 +140,7 @@ impl TonNodeConfig {
         let global_config_path = config_json.ton_global_config_name
             .map(|name| TonNodeConfig::build_path(configs_dir, &name))
             .transpose()?;
-        
+
         let log_config_path = config_json.log_config_name
             .map(|name| TonNodeConfig::build_path(configs_dir, &name))
             .transpose()?;
@@ -172,7 +188,7 @@ impl TonNodeConfig {
     pub fn set_port(&mut self, port: u16) {
         self.port.replace(port);
     }
- 
+
     pub fn load_global_config(&self) -> Result<TonNodeGlobalConfig> {
         let path = self.ton_global_config_path.as_ref()
             .ok_or_else(|| error!("global config informations not found!"))?;
@@ -205,7 +221,7 @@ impl TonNodeGlobalConfig {
     pub fn init_block(&self) -> Result<Option<BlockIdExt>> {
         self.0.init_block()
     }
-    
+
     pub fn dht_nodes(&self) -> Result<Vec<DhtNodeConfig>> {
         self.0.get_dht_nodes_configs()
     }
@@ -364,7 +380,7 @@ impl IdDhtNode {
 
     pub fn convert_key(&self) -> Result<KeyOption> {
         let type_id = self.type_node.as_ref().ok_or_else(|| error!("Type_node is not set!"))?;
-       
+
         let type_id = if type_id.eq(PUB_ED25519) {
             KeyOption::KEY_ED25519
         } else {
@@ -403,7 +419,7 @@ impl DhtNode {
 */
 
 impl TonNodeGlobalConfigJson {
-    
+
     pub fn from_json_file(json_file : &str) -> Result<Self> {
         let file = File::open(json_file)?;
         let reader = BufReader::new(file);
@@ -458,14 +474,14 @@ impl TonNodeGlobalConfigJson {
                 expire_at
             } else {
                 continue
-            };           
+            };
             let addr_list = AdnlAddressList {
                 addrs: addrs.into(),
                 version,
                 reinit_date,
                 priority,
                 expire_at
-            }; 
+            };
             let version = if let Some(version) = dht_node.version {
                 version
             } else {
@@ -514,7 +530,7 @@ impl TonNodeGlobalConfigJson {
             .root_hash
             .as_ref()
             .ok_or_else(|| error!("Unknown workchain root_hash (of zero_state)!"))?;
-                
+
         let root_hash = UInt256::from(base64::decode(&root_hash)?);
 
         let file_hash = self
@@ -539,7 +555,7 @@ impl TonNodeGlobalConfigJson {
             Some(ref init_block) => init_block,
             None => return Ok(None)
         };
-        
+
         let workchain_id = init_block.workchain
             .ok_or_else(|| error!("Unknown workchain id (of zero_state)!"))?;
 

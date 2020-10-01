@@ -7,6 +7,7 @@ use rdkafka::Message;
 use std::sync::Arc;
 use std::time;
 use ton_types::Result;
+use crate::config::SecurityConfig;
 
 pub struct KafkaConsumer {
     config: KafkaConsumerConfig,
@@ -32,17 +33,33 @@ impl KafkaConsumer {
     }
 
     pub async fn run_attempt(&self) -> Result<()> {
-
         log::trace!("Creating consumer...");
 
-        let consumer: rdkafka::consumer::stream_consumer::StreamConsumer 
-            = rdkafka::config::ClientConfig::new()
-                .set("group.id", &self.config.group_id)
-                .set("bootstrap.servers", &self.config.brokers)
-                .set("enable.partition.eof", "false")
-                .set("session.timeout.ms", &self.config.session_timeout_ms.to_string())
-                .set("enable.auto.commit", "false")
-                .create()?;
+        let config = rdkafka::config::ClientConfig::new()
+            .set("group.id", &self.config.group_id)
+            .set("bootstrap.servers", &self.config.brokers)
+            .set("enable.partition.eof", "false")
+            .set("session.timeout.ms", &self.config.session_timeout_ms.to_string())
+            .set("enable.auto.commit", "false");
+
+        let consumer: rdkafka::consumer::stream_consumer::StreamConsumer =
+            match &self.config.security_config {
+                Some(sec) => (
+                    match sec {
+                        &SecurityConfig::Sasl(sasl) => {
+                            config
+                                .set("security.protocol", &sasl.security_protocol)
+                                .set("ssl.ca.location", &sasl.ssl_ca_location)
+                                .set("sasl.mechanism", &sasl.sasl_mechanism)
+                                .set("sasl.username", &sasl.sasl_username)
+                                .set("sasl.password", &sasl.sasl_password)
+                                .create()?
+                        }
+                    }
+                ),
+                None => (config.create()?)
+            };
+
 
         log::trace!("Subscribing...");
         consumer.subscribe(&[&self.config.topic])?;
@@ -51,12 +68,12 @@ impl KafkaConsumer {
         let mut message_stream = consumer.start();
         while let Some(borrowed_message) = message_stream.next().await {
             let borrowed_message = borrowed_message?;
-            let message_descr = format!("topic: {}, partition: {}, offset: {}", 
+            let message_descr = format!("topic: {}, partition: {}, offset: {}",
                 borrowed_message.topic(), borrowed_message.partition(), borrowed_message.offset());
             let now = std::time::Instant::now();
             if let Some(payload) = rdkafka::Message::payload(&borrowed_message) {
                 log::trace!("Processing record, {:?}", payload);
-                
+
                 let count = self.engine.redirect_external_message(&payload).await?;
                 log::trace!("count number of nodes to broadcast to: {}", count);
             } else {
