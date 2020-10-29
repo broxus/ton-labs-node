@@ -33,10 +33,11 @@ impl KafkaConsumer {
     }
 
     pub async fn run_attempt(&self) -> Result<()> {
+
         log::trace!("Creating consumer...");
 
         let mut  config = rdkafka::config::ClientConfig::new();
-            config.set("group.id", &self.config.group_id)
+        config.set("group.id", &self.config.group_id)
             .set("bootstrap.servers", &self.config.brokers)
             .set("enable.partition.eof", "false")
             .set("session.timeout.ms", &self.config.session_timeout_ms.to_string())
@@ -60,7 +61,6 @@ impl KafkaConsumer {
                 None => (config.create()?)
             };
 
-
         log::trace!("Subscribing...");
         consumer.subscribe(&[&self.config.topic])?;
 
@@ -69,13 +69,17 @@ impl KafkaConsumer {
         while let Some(borrowed_message) = message_stream.next().await {
             let borrowed_message = borrowed_message?;
             let message_descr = format!("topic: {}, partition: {}, offset: {}",
-                borrowed_message.topic(), borrowed_message.partition(), borrowed_message.offset());
+                                        borrowed_message.topic(), borrowed_message.partition(), borrowed_message.offset());
             let now = std::time::Instant::now();
             if let Some(payload) = rdkafka::Message::payload(&borrowed_message) {
                 log::trace!("Processing record, {:?}", payload);
-
-                let count = self.engine.redirect_external_message(&payload).await?;
-                log::trace!("count number of nodes to broadcast to: {}", count);
+                match self.engine.redirect_external_message(&payload).await {
+                    Ok(count) => log::trace!("count number of nodes to broadcast to: {}", count),
+                    Err(e) => log::error!(
+                        "error while processing external message (topic: {}, partition: {}, offset: {}): {:?}",
+                        borrowed_message.topic(), borrowed_message.partition(), borrowed_message.offset(), e
+                    ),
+                };
             } else {
                 log::warn!("Record with empty payload, {}", message_descr);
             }
